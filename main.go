@@ -391,21 +391,90 @@ func progressTickerCmd(progress *loadProgress) tea.Cmd {
 	})
 }
 
-func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]video, []string, error) {
+func collectVideoPaths(root string) ([]string, error) {
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		if isVideo(root) {
+			return []string{root}, nil
+		}
+		return nil, nil
+	}
+	visited := make(map[string]struct{})
 	var paths []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := traverseVideoPaths(root, root, visited, &paths); err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func traverseVideoPaths(displayPath, realPath string, visited map[string]struct{}, acc *[]string) error {
+	resolved, err := filepath.EvalSymlinks(realPath)
+	if err != nil {
+		resolved = realPath
+	}
+	resolved = filepath.Clean(resolved)
+	if _, seen := visited[resolved]; seen {
+		return nil
+	}
+	visited[resolved] = struct{}{}
+
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		displayChild := filepath.Join(displayPath, entry.Name())
+		realChild := filepath.Join(resolved, entry.Name())
+		fi, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			return nil
+		mode := fi.Mode()
+		if mode&os.ModeSymlink != 0 {
+			targetPath, err := filepath.EvalSymlinks(realChild)
+			if err != nil {
+				if isVideo(displayChild) {
+					*acc = append(*acc, displayChild)
+				}
+				continue
+			}
+			targetInfo, err := os.Stat(targetPath)
+			if err != nil {
+				if isVideo(displayChild) {
+					*acc = append(*acc, displayChild)
+				}
+				continue
+			}
+			if targetInfo.IsDir() {
+				if err := traverseVideoPaths(displayChild, targetPath, visited, acc); err != nil {
+					return err
+				}
+				continue
+			}
+			if isVideo(displayChild) || isVideo(targetPath) {
+				*acc = append(*acc, displayChild)
+			}
+			continue
 		}
-		if !isVideo(path) {
-			return nil
+		if fi.IsDir() {
+			if err := traverseVideoPaths(displayChild, realChild, visited, acc); err != nil {
+				return err
+			}
+			continue
 		}
-		paths = append(paths, path)
-		return nil
-	})
+		if isVideo(displayChild) {
+			*acc = append(*acc, displayChild)
+		}
+	}
+	return nil
+}
+
+func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]video, []string, error) {
+	paths, err := collectVideoPaths(root)
 	if err != nil {
 		return nil, nil, err
 	}
