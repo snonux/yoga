@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -23,7 +24,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const Version = "v0.0.0"
+const Version = "v0.1.0"
 
 var (
 	videoExtensions = map[string]struct{}{
@@ -277,6 +278,7 @@ type model struct {
 }
 
 func main() {
+	rootFlag := flag.String("root", "", "Directory containing yoga videos (default ~/Yoga)")
 	crop := flag.String("crop", "", "Optional crop aspect for VLC (e.g. 5:4)")
 	printVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
@@ -286,7 +288,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	root := mustWorkspaceRoot()
+	root, err := resolveRootPath(*rootFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
 	m := newModel(root, strings.TrimSpace(*crop))
 	if err := tea.NewProgram(m, tea.WithAltScreen()).Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -294,13 +301,78 @@ func main() {
 	}
 }
 
-func mustWorkspaceRoot() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot determine working directory: %v\n", err)
-		os.Exit(1)
+func resolveRootPath(flagValue string) (string, error) {
+	value := strings.TrimSpace(flagValue)
+	isDefault := value == ""
+	if isDefault {
+		value = "~/Yoga"
 	}
-	return cwd
+	expanded, err := expandPath(value)
+	if err != nil {
+		return "", fmt.Errorf("cannot expand root path %q: %w", value, err)
+	}
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve root path %q: %w", expanded, err)
+	}
+	info, statErr := os.Stat(abs)
+	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			if isDefault {
+				if mkErr := os.MkdirAll(abs, 0o755); mkErr != nil {
+					return "", fmt.Errorf("cannot create default directory %q: %w", abs, mkErr)
+				}
+				info, statErr = os.Stat(abs)
+				if statErr != nil {
+					return "", fmt.Errorf("cannot stat default directory %q: %w", abs, statErr)
+				}
+			} else {
+				return "", fmt.Errorf("root path does not exist: %s", abs)
+			}
+		} else {
+			return "", fmt.Errorf("cannot access root path %q: %w", abs, statErr)
+		}
+	}
+	if info.IsDir() || info.Mode().IsRegular() {
+		return abs, nil
+	}
+	return "", fmt.Errorf("root path %q is not a file or directory", abs)
+}
+
+func expandPath(p string) (string, error) {
+	if p == "" || p[0] != '~' {
+		return p, nil
+	}
+	if len(p) == 1 {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return home, nil
+	}
+	if p[1] == '/' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, p[2:]), nil
+	}
+	sep := strings.IndexRune(p, '/')
+	var username, rest string
+	if sep == -1 {
+		username = p[1:]
+	} else {
+		username = p[1:sep]
+		rest = p[sep:]
+	}
+	usr, err := user.Lookup(username)
+	if err != nil {
+		return "", err
+	}
+	if rest == "" {
+		return usr.HomeDir, nil
+	}
+	return filepath.Join(usr.HomeDir, rest), nil
 }
 
 func newModel(root, vlcCrop string) model {
@@ -429,11 +501,16 @@ func traverseVideoPaths(displayPath, realPath string, visited map[string]struct{
 	for _, entry := range entries {
 		displayChild := filepath.Join(displayPath, entry.Name())
 		realChild := filepath.Join(resolved, entry.Name())
-		fi, err := entry.Info()
-		if err != nil {
-			return err
+		mode := entry.Type()
+		var info os.FileInfo
+		if mode == fs.FileMode(0) {
+			var err error
+			info, err = entry.Info()
+			if err != nil {
+				return err
+			}
+			mode = info.Mode()
 		}
-		mode := fi.Mode()
 		if mode&os.ModeSymlink != 0 {
 			targetPath, err := filepath.EvalSymlinks(realChild)
 			if err != nil {
@@ -460,7 +537,7 @@ func traverseVideoPaths(displayPath, realPath string, visited map[string]struct{
 			}
 			continue
 		}
-		if fi.IsDir() {
+		if mode.IsDir() {
 			if err := traverseVideoPaths(displayChild, realChild, visited, acc); err != nil {
 				return err
 			}
