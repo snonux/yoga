@@ -1,6 +1,6 @@
 # Yoga
 
-Yoga is a TUI for browsing local yoga videos with quick filtering, duration probing, and one-key playback via VLC.
+Yoga is a TUI for browsing local yoga videos with quick filtering, duration probing, and one-key playback via VLC. It has ben vibe-coded.
 
 ![Yoga](yoga.png)
 
