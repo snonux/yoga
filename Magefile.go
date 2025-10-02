@@ -24,6 +24,11 @@ func Test() error {
 	return run("go", "test", "./...")
 }
 
+// Run runs the unit test suite.
+func Run() error {
+	return run("go", "run", "./cmd/yoga")
+}
+
 // Install installs the yoga binary into GOPATH/bin or GOBIN.
 func Install() error {
 	return run("go", "install", "./cmd/yoga")
