@@ -9,4 +9,5 @@ type video struct {
 	ModTime  time.Time
 	Size     int64
 	Err      error
+	Tags     []string
 }

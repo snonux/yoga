@@ -17,6 +17,7 @@ type filterState struct {
 	minMinutes int
 	maxEnabled bool
 	maxMinutes int
+	tags       string
 }
 
 type filterInputs struct {
@@ -28,8 +29,9 @@ func (m *model) applyFilterInputs() error {
 	name := strings.TrimSpace(m.inputs.fields[0].Value())
 	minText := strings.TrimSpace(m.inputs.fields[1].Value())
 	maxText := strings.TrimSpace(m.inputs.fields[2].Value())
+	tags := strings.TrimSpace(m.inputs.fields[3].Value())
 
-	filters := filterState{name: name}
+	filters := filterState{name: name, tags: tags}
 	if err := populateMinFilter(&filters, minText); err != nil {
 		return err
 	}
@@ -98,6 +100,9 @@ func (m model) describeFilters() string {
 	if m.filters.name != "" {
 		parts = append(parts, fmt.Sprintf("name contains %q", m.filters.name))
 	}
+	if m.filters.tags != "" {
+		parts = append(parts, fmt.Sprintf("tags contain %q", m.filters.tags))
+	}
 	if m.filters.minEnabled {
 		parts = append(parts, fmt.Sprintf(">=%d min", m.filters.minMinutes))
 	}
@@ -121,6 +126,19 @@ func (m *model) passesFilters(v video) bool {
 	if m.filters.maxEnabled && (v.Duration == 0 || durMinutes > m.filters.maxMinutes) {
 		return false
 	}
+	if m.filters.tags != "" {
+		query := strings.ToLower(m.filters.tags)
+		matched := false
+		for _, tag := range v.Tags {
+			if strings.Contains(strings.ToLower(tag), query) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
 	return true
 }
 
@@ -128,7 +146,7 @@ func (m *model) renderFilterModal() string {
 	var b strings.Builder
 	b.WriteString("Filter videos\n")
 	b.WriteString("(Enter to apply, Esc to cancel)\n\n")
-	labels := []string{"Name contains:", "Min length (minutes):", "Max length (minutes):"}
+	labels := []string{"Name contains:", "Min length (minutes):", "Max length (minutes):", "Tags contain:"}
 	for i, field := range m.inputs.fields {
 		line := fmt.Sprintf("%s %s", labels[i], field.View())
 		if i == m.inputs.focus {

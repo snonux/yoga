@@ -15,11 +15,11 @@ func videoRow(v video) table.Row {
 		duration = formatDuration(v.Duration)
 	}
 	age := humanizeAge(v.ModTime)
-	path := trimPath(v.Path)
+	tags := formatTags(v.Tags)
 	if v.Err != nil {
 		duration = "!" + v.Err.Error()
 	}
-	return table.Row{v.Name, duration, age, path}
+	return table.Row{v.Name, duration, age, tags}
 }
 
 func renderProgressBar(done, total, width int) string {
@@ -77,4 +77,11 @@ func trimPath(path string) string {
 		return "~" + strings.TrimPrefix(path, home)
 	}
 	return path
+}
+
+func formatTags(tags []string) string {
+	if len(tags) == 0 {
+		return "--"
+	}
+	return strings.Join(tags, ", ")
 }

@@ -13,6 +13,9 @@ func (m model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.loading {
 		return m, nil
 	}
+	if m.editingTags {
+		return m.handleTagKey(msg)
+	}
 	if m.showFilters {
 		return m.handleFilterKey(msg)
 	}
@@ -83,6 +86,12 @@ func (m model) handleTableKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.sortAndReport(sortByAge)
 	case "c":
 		return m.toggleCrop()
+	case "t":
+		return m.openTagEditor()
+	case "H":
+		return m.hideHelpBar()
+	case "h":
+		return m.showHelpBar()
 	case "r":
 		return m.resetFilterState()
 	default:

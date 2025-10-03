@@ -21,10 +21,21 @@ Yoga recognises common video extensions (`.mp4`, `.mkv`, `.mov`, `.avi`, `.wmv`,
 - `↑/↓` – Navigate the table
 - `enter` – Play the selected video in VLC
 - `/` or `f` – Open the filter dialog
+- `tab` / `shift+tab` – Move between fields in filter/tag dialogs
 - `r` – Reset filters
 - `n`, `l`, `a` – Sort by name, length, or age
 - `c` – Toggle VLC crop
+- `t` – Edit tags for the selected video
+- `H` / `h` – Hide or re-show the help footer
 - `q` – Quit
+
+### Filter Dialog
+
+- Focus starts on the name filter when you press `/`.
+- Use `tab` and `shift+tab` to move to **Min minutes**, **Max minutes**, or **Tags contain**.
+- Type numeric values for the minute bounds; leave them blank to disable that side of the range.
+- Press `enter` to apply the filters or `esc` to cancel.
+- Status text reflects how many videos remain after filtering.
 
 ## Development
 

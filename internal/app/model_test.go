@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -170,9 +171,9 @@ func TestDescribeFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newModel: %v", err)
 	}
-	m.filters = filterState{name: "flow", minEnabled: true, minMinutes: 5, maxEnabled: true, maxMinutes: 20}
+	m.filters = filterState{name: "flow", minEnabled: true, minMinutes: 5, maxEnabled: true, maxMinutes: 20, tags: "calm"}
 	desc := m.describeFilters()
-	if !strings.Contains(desc, "flow") || !strings.Contains(desc, ">=5") {
+	if !strings.Contains(desc, "flow") || !strings.Contains(desc, ">=5") || !strings.Contains(desc, "calm") {
 		t.Fatalf("unexpected description %s", desc)
 	}
 }
@@ -335,13 +336,26 @@ func TestUpdateStatusAfterLoadCacheWarning(t *testing.T) {
 	}
 }
 
+func TestUpdateStatusAfterLoadTagWarning(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	msg := videosLoadedMsg{videos: []video{{Name: "a", Path: "a.mp4"}}, tagErr: errors.New("bad json")}
+	modelAny, _ := m.Update(msg)
+	m = modelAny.(model)
+	if !strings.Contains(m.statusMessage, "tag warning") {
+		t.Fatalf("expected tag warning, got %s", m.statusMessage)
+	}
+}
+
 func TestPassesFiltersBounds(t *testing.T) {
 	m, err := newModel(Options{Root: t.TempDir()})
 	if err != nil {
 		t.Fatalf("newModel: %v", err)
 	}
 	m.filters = filterState{minEnabled: true, minMinutes: 5, maxEnabled: true, maxMinutes: 15}
-	video := video{Name: "clip", Duration: 10 * time.Minute}
+	video := video{Name: "clip", Duration: 10 * time.Minute, Tags: []string{"calm", "focus"}}
 	if !m.passesFilters(video) {
 		t.Fatalf("expected video within bounds")
 	}
@@ -352,6 +366,14 @@ func TestPassesFiltersBounds(t *testing.T) {
 	m.filters = filterState{name: "yoga"}
 	if m.passesFilters(video) {
 		t.Fatalf("expected name filter to exclude video")
+	}
+	m.filters = filterState{tags: "calm"}
+	if !m.passesFilters(video) {
+		t.Fatalf("expected tag filter to include video")
+	}
+	m.filters = filterState{tags: "power"}
+	if m.passesFilters(video) {
+		t.Fatalf("expected tag filter to exclude video")
 	}
 }
 
@@ -436,6 +458,221 @@ func TestResetFilters(t *testing.T) {
 	m = modelAny.(model)
 	if m.filters.name != "" {
 		t.Fatalf("expected filters cleared")
+	}
+}
+
+func TestHandleTagsSavedUpdatesModel(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	vid := video{Name: "clip.mp4", Path: filepath.Join(root, "clip.mp4")}
+	m.videos = []video{vid}
+	m.filtered = []video{vid}
+	m.table.SetRows([]table.Row{videoRow(vid)})
+	modelAny, _ := m.handleTagsSaved(tagsSavedMsg{path: vid.Path, tags: []string{"calm", "focus"}})
+	m = modelAny.(model)
+	if len(m.videos[0].Tags) != 2 {
+		t.Fatalf("expected tags recorded")
+	}
+	if len(m.filtered) != 1 || len(m.filtered[0].Tags) != 2 {
+		t.Fatalf("expected filtered list updated")
+	}
+	if !strings.Contains(m.statusMessage, "Tags updated") {
+		t.Fatalf("expected status update, got %s", m.statusMessage)
+	}
+}
+
+func TestOpenTagEditorLoadsExistingTags(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	vid := video{Name: "clip.mp4", Path: filepath.Join(root, "clip.mp4"), Tags: []string{"calm"}}
+	m.videos = []video{vid}
+	m.applyFiltersAndSort()
+	modelAny, _ := m.openTagEditor()
+	m = modelAny.(model)
+	if !m.editingTags {
+		t.Fatalf("expected tag editor to open")
+	}
+	if m.tagInput.Value() != "calm" {
+		t.Fatalf("expected input prefilled, got %s", m.tagInput.Value())
+	}
+}
+
+func TestParseTagInput(t *testing.T) {
+	result := parseTagInput(" calm , Focus , focus , ")
+	if len(result) != 2 {
+		t.Fatalf("expected two tags, got %v", result)
+	}
+	if result[0] != "calm" || result[1] != "Focus" {
+		t.Fatalf("unexpected order or casing: %v", result)
+	}
+	if out := parseTagInput("   "); out != nil {
+		t.Fatalf("expected nil for blank input, got %v", out)
+	}
+}
+
+func TestSaveTagsCmd(t *testing.T) {
+	dir := t.TempDir()
+	videoPath := filepath.Join(dir, "clip.mp4")
+	if err := os.WriteFile(videoPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+	msg := saveTagsCmd(videoPath, []string{" calm ", "calm", "Focus"})()
+	result, ok := msg.(tagsSavedMsg)
+	if !ok {
+		t.Fatalf("expected tagsSavedMsg, got %T", msg)
+	}
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if len(result.tags) != 2 {
+		t.Fatalf("expected deduped tags, got %v", result.tags)
+	}
+}
+
+func TestHelpLineAfterTagEdit(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	vid := video{Name: "clip.mp4", Path: filepath.Join(root, "clip.mp4")}
+	loaded := videosLoadedMsg{videos: []video{vid}, cache: newDurationCache(filepath.Join(root, "cache.json"))}
+	modelAny, _ := m.handleVideosLoaded(loaded)
+	m = modelAny.(model)
+	if view := m.View(); !strings.Contains(view, "Loaded 1 videos") {
+		t.Fatalf("expected base status in view: %s", view)
+	}
+	modelAny, _ = m.openTagEditor()
+	m = modelAny.(model)
+	m.tagInput.SetValue("calm")
+	modelAny, cmd := m.handleTagKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = modelAny.(model)
+	if cmd == nil {
+		t.Fatalf("expected save command")
+	}
+	if view := m.View(); !strings.Contains(view, "Loaded 1 videos") || !strings.Contains(view, "Saving tags") {
+		t.Fatalf("expected combined status while saving: %s", view)
+	}
+	msg := cmd().(tagsSavedMsg)
+	modelAny, _ = m.handleTagsSaved(msg)
+	m = modelAny.(model)
+	if view := m.View(); !strings.Contains(view, "Loaded 1 videos") {
+		t.Fatalf("expected base status after save: %s", view)
+	}
+	if view := m.View(); !strings.Contains(view, "↑/↓ navigate") {
+		t.Fatalf("expected help line after save: %s", view)
+	}
+	if !strings.Contains(m.statusMessage, "Tags updated") {
+		t.Fatalf("expected status message to report update, got %s", m.statusMessage)
+	}
+}
+
+func TestToggleHelpKeys(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	vid := video{Name: "clip.mp4", Path: filepath.Join(root, "clip.mp4")}
+	loaded := videosLoadedMsg{videos: []video{vid}, cache: newDurationCache(filepath.Join(root, "cache.json"))}
+	modelAny, _ := m.handleVideosLoaded(loaded)
+	m = modelAny.(model)
+	helpLine := "↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  q quit"
+	if view := m.View(); !strings.Contains(view, helpLine) {
+		t.Fatalf("expected help line visible: %s", view)
+	}
+	modelAny, _ = m.handleKeyMsg(keyMsg("H"))
+	m = modelAny.(model)
+	if m.showHelp {
+		t.Fatalf("expected help to be hidden")
+	}
+	if view := m.View(); strings.Contains(view, helpLine) {
+		t.Fatalf("expected help line hidden: %s", view)
+	}
+	if !strings.Contains(m.statusMessage, "Help hidden") {
+		t.Fatalf("expected help hidden status, got %s", m.statusMessage)
+	}
+	modelAny, _ = m.handleKeyMsg(keyMsg("h"))
+	m = modelAny.(model)
+	if !m.showHelp {
+		t.Fatalf("expected help to be shown")
+	}
+	if view := m.View(); !strings.Contains(view, helpLine) {
+		t.Fatalf("expected help line visible again: %s", view)
+	}
+}
+
+func TestWindowResizeExpandsNameColumn(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	initial := m.table.Columns()[0].Width
+	modelAny, _ := m.Update(tea.WindowSizeMsg{Width: 180, Height: 40})
+	m = modelAny.(model)
+	resized := m.table.Columns()[0].Width
+	if resized <= initial {
+		t.Fatalf("expected name column to expand, initial=%d resized=%d", initial, resized)
+	}
+}
+
+func TestWindowResizeShrinksColumnsGracefully(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	modelAny, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 40})
+	m = modelAny.(model)
+	cols := m.table.Columns()
+	if len(cols) != 4 {
+		t.Fatalf("expected 4 columns")
+	}
+	if cols[0].Width < nameColumnFloorWidth {
+		t.Fatalf("expected name column >= floor, got %d", cols[0].Width)
+	}
+	if cols[3].Width < tagsColumnFloorWidth {
+		t.Fatalf("expected tags column >= floor, got %d", cols[3].Width)
+	}
+}
+
+func TestFilterByDurationRange(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.videos = []video{{Name: "short.mp4", Duration: 5 * time.Minute}, {Name: "long.mp4", Duration: 20 * time.Minute}}
+	m.applyFiltersAndSort()
+	modelAny, _ := m.handleKeyMsg(keyMsg("/"))
+	m = modelAny.(model)
+	if !m.showFilters {
+		t.Fatalf("expected filters to open")
+	}
+	// Move focus to min minutes field.
+	modelAny, _ = m.handleFilterKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = modelAny.(model)
+	// Enter "10".
+	modelAny, _ = m.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	m = modelAny.(model)
+	modelAny, _ = m.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	m = modelAny.(model)
+	// Apply filter.
+	modelAny, _ = m.handleFilterKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = modelAny.(model)
+	if len(m.filtered) != 1 || m.filtered[0].Name != "long.mp4" {
+		t.Fatalf("expected only long video after filtering, got %+v", m.filtered)
+	}
+	if !strings.Contains(m.statusMessage, "Filters applied") {
+		t.Fatalf("expected status update, got %s", m.statusMessage)
 	}
 }
 

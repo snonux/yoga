@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"yoga/internal/tags"
 )
 
 func TestCollectVideoPathsDetectsMP4(t *testing.T) {
@@ -70,15 +72,40 @@ func TestLoadVideosWithCache(t *testing.T) {
 	_ = cache.Record(video, info, time.Minute)
 	progress := &loadProgress{}
 	progress.Reset()
-	videos, pending, err := loadVideos(dir, cache, progress)
+	videos, pending, tagErr, err := loadVideos(dir, cache, progress)
 	if err != nil {
 		t.Fatalf("loadVideos: %v", err)
+	}
+	if tagErr != nil {
+		t.Fatalf("unexpected tag error: %v", tagErr)
 	}
 	if len(videos) != 1 || len(pending) != 0 {
 		t.Fatalf("expected cached video without pending: videos=%d pending=%d", len(videos), len(pending))
 	}
 	if videos[0].Duration != time.Minute {
 		t.Fatalf("expected cached duration")
+	}
+}
+
+func TestLoadVideosReadsTags(t *testing.T) {
+	dir := t.TempDir()
+	videoPath := filepath.Join(dir, "session.mp4")
+	if err := os.WriteFile(videoPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+	metaPath := tags.PathFor(videoPath)
+	if err := os.WriteFile(metaPath, []byte("[\"calm\", \"focus\"]"), 0o644); err != nil {
+		t.Fatalf("write tags: %v", err)
+	}
+	videos, _, tagErr, err := loadVideos(dir, nil, nil)
+	if err != nil {
+		t.Fatalf("loadVideos: %v", err)
+	}
+	if tagErr != nil {
+		t.Fatalf("unexpected tag error: %v", tagErr)
+	}
+	if len(videos) != 1 || len(videos[0].Tags) != 2 {
+		t.Fatalf("expected tags loaded, got %#v", videos)
 	}
 }
 
@@ -152,9 +179,12 @@ func TestLoadVideosHandlesStatError(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "missing.mp4"), broken); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	videos, _, err := loadVideos(dir, nil, nil)
+	videos, _, tagErr, err := loadVideos(dir, nil, nil)
 	if err != nil {
 		t.Fatalf("loadVideos: %v", err)
+	}
+	if tagErr != nil {
+		t.Fatalf("unexpected tag error: %v", tagErr)
 	}
 	if len(videos) != 1 || videos[0].Err == nil {
 		t.Fatalf("expected stat error recorded, got %+v", videos)

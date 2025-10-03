@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -13,16 +14,18 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"yoga/internal/tags"
 )
 
 func loadVideosCmd(root, cachePath string, progress *loadProgress) tea.Cmd {
 	return func() tea.Msg {
 		cache, cacheErr := loadDurationCache(cachePath)
-		videos, pending, err := loadVideos(root, cache, progress)
+		videos, pending, tagErr, err := loadVideos(root, cache, progress)
 		if progress != nil {
 			progress.MarkDone()
 		}
-		return videosLoadedMsg{videos: videos, err: err, cacheErr: cacheErr, pending: pending, cache: cache}
+		return videosLoadedMsg{videos: videos, err: err, cacheErr: cacheErr, pending: pending, cache: cache, tagErr: tagErr}
 	}
 }
 
@@ -36,16 +39,17 @@ func progressTickerCmd(progress *loadProgress) tea.Cmd {
 	})
 }
 
-func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]video, []string, error) {
+func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]video, []string, error, error) {
 	paths, err := collectVideoPaths(root)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if progress != nil {
 		progress.SetTotal(len(paths))
 	}
 	videos := make([]video, 0, len(paths))
 	pending := make([]string, 0)
+	var tagErrors []string
 	for _, path := range paths {
 		info, statErr := os.Stat(path)
 		if statErr != nil {
@@ -57,16 +61,28 @@ func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]vi
 		if dur == 0 {
 			pending = append(pending, path)
 		}
+		tagList, tagErr := tags.Load(path)
+		if tagErr != nil {
+			tagErrors = append(tagErrors, fmt.Sprintf("%s: %v", filepath.Base(path), tagErr))
+		}
 		videos = append(videos, video{
 			Name:     filepath.Base(path),
 			Path:     path,
 			Duration: dur,
 			ModTime:  info.ModTime(),
 			Size:     info.Size(),
+			Tags:     tagList,
 		})
 		increment(progress)
 	}
-	return videos, pending, nil
+	return videos, pending, joinErrors(tagErrors), nil
+}
+
+func joinErrors(messages []string) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(messages, "; "))
 }
 
 func increment(progress *loadProgress) {

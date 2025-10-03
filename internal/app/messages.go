@@ -8,6 +8,7 @@ type videosLoadedMsg struct {
 	cacheErr error
 	pending  []string
 	cache    *durationCache
+	tagErr   error
 }
 
 type playVideoMsg struct {
@@ -25,4 +26,10 @@ type durationUpdateMsg struct {
 	path     string
 	duration time.Duration
 	err      error
+}
+
+type tagsSavedMsg struct {
+	path string
+	tags []string
+	err  error
 }

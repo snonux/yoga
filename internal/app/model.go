@@ -18,6 +18,17 @@ const (
 	sortByAge
 )
 
+const (
+	preferredNameColumnWidth     = 40
+	preferredDurationColumnWidth = 12
+	preferredAgeColumnWidth      = 14
+	preferredTagsColumnWidth     = 28
+	nameColumnFloorWidth         = 16
+	durationColumnFloorWidth     = 8
+	ageColumnFloorWidth          = 10
+	tagsColumnFloorWidth         = 12
+)
+
 type model struct {
 	table            table.Model
 	videos           []video
@@ -25,6 +36,7 @@ type model struct {
 	filters          filterState
 	inputs           filterInputs
 	showFilters      bool
+	editingTags      bool
 	sortField        sortField
 	sortAscending    bool
 	statusMessage    string
@@ -40,12 +52,18 @@ type model struct {
 	durationInFlight int
 	cropValue        string
 	cropEnabled      bool
+	tagInput         textinput.Model
+	tagEditPath      string
+	baseStatus       string
+	showHelp         bool
+	viewportWidth    int
 }
 
 func newModel(opts Options) (model, error) {
 	tbl := buildTable()
 	inputs := buildFilterInputs()
 	inputs.fields[0].Focus()
+	tagInput := buildTagInput()
 
 	progress := &loadProgress{}
 	cachePath := filepath.Join(opts.Root, ".video_duration_cache.json")
@@ -53,6 +71,7 @@ func newModel(opts Options) (model, error) {
 	return model{
 		table:         tbl,
 		inputs:        inputs,
+		tagInput:      tagInput,
 		sortField:     sortByName,
 		sortAscending: true,
 		statusMessage: "Scanning for videos...",
@@ -62,16 +81,17 @@ func newModel(opts Options) (model, error) {
 		cachePath:     cachePath,
 		cropValue:     opts.Crop,
 		cropEnabled:   opts.Crop != "",
+		showHelp:      true,
 	}, nil
 }
 
 func buildTable() table.Model {
-	columns := []table.Column{
-		{Title: headerStyle.Render("Name"), Width: 50},
-		{Title: headerStyle.Render("Duration"), Width: 12},
-		{Title: headerStyle.Render("Age"), Width: 14},
-		{Title: headerStyle.Render("Path"), Width: 40},
-	}
+	columns := makeColumns(
+		preferredNameColumnWidth,
+		preferredDurationColumnWidth,
+		preferredAgeColumnWidth,
+		preferredTagsColumnWidth,
+	)
 	tbl := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
@@ -97,9 +117,31 @@ func buildFilterInputs() filterInputs {
 	maxInput.Prompt = "Max minutes: "
 	maxInput.CharLimit = 4
 
+	tagInput := textinput.New()
+	tagInput.Placeholder = "tag substring"
+	tagInput.Prompt = "Tags: "
+	tagInput.CharLimit = 256
+
 	return filterInputs{
-		fields: []textinput.Model{nameInput, minInput, maxInput},
+		fields: []textinput.Model{nameInput, minInput, maxInput, tagInput},
 		focus:  0,
+	}
+}
+
+func buildTagInput() textinput.Model {
+	input := textinput.New()
+	input.Placeholder = "comma-separated tags"
+	input.Prompt = "Tags: "
+	input.CharLimit = 512
+	return input
+}
+
+func makeColumns(nameWidth, durationWidth, ageWidth, tagsWidth int) []table.Column {
+	return []table.Column{
+		{Title: headerStyle.Render("Name"), Width: nameWidth},
+		{Title: headerStyle.Render("Duration"), Width: durationWidth},
+		{Title: headerStyle.Render("Age"), Width: ageWidth},
+		{Title: headerStyle.Render("Tags"), Width: tagsWidth},
 	}
 }
 
@@ -126,6 +168,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleVideosLoaded(typed)
 	case playVideoMsg:
 		return m.handlePlayVideo(typed), nil
+	case tagsSavedMsg:
+		return m.handleTagsSaved(typed)
+	case tea.WindowSizeMsg:
+		return m.handleWindowSize(typed)
 	default:
 		return m.updateTable(msg)
 	}
@@ -136,6 +182,9 @@ func (m model) View() string {
 		return statusStyle.Render("Loading videos, please wait...")
 	}
 	body := m.renderBody()
+	if m.editingTags {
+		return body + "\n\n" + m.renderTagModal()
+	}
 	if m.showFilters {
 		return body + "\n\n" + m.renderFilterModal()
 	}
@@ -144,18 +193,115 @@ func (m model) View() string {
 
 func (m model) renderBody() string {
 	helpLines := []string{
-		"↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c copy path  •  q quit",
+		"↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  q quit",
 	}
-	info := statusStyle.Render(m.statusMessage)
+	info := statusStyle.Render(m.statusText())
 	progressLine := m.renderProgressLine()
 	content := tableStyle.Render(m.table.View())
-	help := strings.Join(helpLines, "\n")
 	parts := []string{content}
 	if progressLine != "" {
 		parts = append(parts, progressLine)
 	}
-	parts = append(parts, info, help)
+	parts = append(parts, info)
+	if m.showHelp {
+		help := strings.Join(helpLines, "\n")
+		parts = append(parts, help)
+	}
 	return strings.Join(parts, "\n")
+}
+
+func (m model) statusText() string {
+	status := strings.TrimSpace(m.statusMessage)
+	base := strings.TrimSpace(m.baseStatus)
+	if base == "" {
+		return status
+	}
+	if status == "" || status == base {
+		return base
+	}
+	return fmt.Sprintf("%s • %s", base, status)
+}
+
+func (m model) showHelpBar() (tea.Model, tea.Cmd) {
+	if m.showHelp {
+		return m, nil
+	}
+	m.showHelp = true
+	if strings.Contains(m.statusMessage, "Help hidden") {
+		m.statusMessage = ""
+	}
+	return m, nil
+}
+
+func (m model) hideHelpBar() (tea.Model, tea.Cmd) {
+	if !m.showHelp {
+		return m, nil
+	}
+	m.showHelp = false
+	m.statusMessage = "Help hidden (press h to show)"
+	return m, nil
+}
+
+func (m model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.viewportWidth = msg.Width
+	m.resizeColumns(msg.Width)
+	tbl, cmd := m.table.Update(msg)
+	m.table = tbl
+	if cmd == nil {
+		return m, nil
+	}
+	return m, cmd
+}
+
+func (m *model) resizeColumns(totalWidth int) {
+	if totalWidth <= 0 {
+		return
+	}
+	frame := tableStyle.GetHorizontalFrameSize()
+	contentWidth := totalWidth - frame
+	minWidth := nameColumnFloorWidth + durationColumnFloorWidth + ageColumnFloorWidth + tagsColumnFloorWidth
+	if contentWidth < minWidth {
+		contentWidth = minWidth
+	}
+	preferred := preferredNameColumnWidth + preferredDurationColumnWidth + preferredAgeColumnWidth + preferredTagsColumnWidth
+	nameWidth := preferredNameColumnWidth
+	durationWidth := preferredDurationColumnWidth
+	ageWidth := preferredAgeColumnWidth
+	tagsWidth := preferredTagsColumnWidth
+	if contentWidth >= preferred {
+		extra := contentWidth - preferred
+		nameWidth += extra
+	} else {
+		deficit := preferred - contentWidth
+		if deficit > 0 {
+			reduce := min(deficit, nameWidth-nameColumnFloorWidth)
+			nameWidth -= reduce
+			deficit -= reduce
+		}
+		if deficit > 0 {
+			reduce := min(deficit, tagsWidth-tagsColumnFloorWidth)
+			tagsWidth -= reduce
+			deficit -= reduce
+		}
+		if deficit > 0 {
+			reduce := min(deficit, ageWidth-ageColumnFloorWidth)
+			ageWidth -= reduce
+			deficit -= reduce
+		}
+		if deficit > 0 {
+			reduce := min(deficit, durationWidth-durationColumnFloorWidth)
+			durationWidth -= reduce
+		}
+	}
+	m.table.SetColumns(makeColumns(nameWidth, durationWidth, ageWidth, tagsWidth))
+	m.table.SetWidth(contentWidth)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (m model) renderProgressLine() string {

@@ -162,20 +162,25 @@ func (m model) handleVideosLoaded(msg videosLoadedMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateStatusAfterLoad(msg videosLoadedMsg) {
 	if len(m.filtered) == 0 {
-		m.statusMessage = "No videos found"
+		m.baseStatus = "No videos found"
+		m.statusMessage = m.baseStatus
 		return
 	}
+	status := ""
 	if len(msg.pending) > 0 {
+		status = fmt.Sprintf("Loaded %d videos, probing durations...", len(m.filtered))
 		if msg.cacheErr != nil {
-			m.statusMessage = fmt.Sprintf("Loaded %d videos (cache warning: %v), probing durations...", len(m.filtered), msg.cacheErr)
-			return
+			status = fmt.Sprintf("Loaded %d videos (cache warning: %v), probing durations...", len(m.filtered), msg.cacheErr)
 		}
-		m.statusMessage = fmt.Sprintf("Loaded %d videos, probing durations...", len(m.filtered))
-		return
+	} else {
+		status = fmt.Sprintf("Loaded %d videos", len(m.filtered))
+		if msg.cacheErr != nil {
+			status = fmt.Sprintf("Loaded %d videos (cache warning: %v)", len(m.filtered), msg.cacheErr)
+		}
 	}
-	if msg.cacheErr != nil {
-		m.statusMessage = fmt.Sprintf("Loaded %d videos (cache warning: %v)", len(m.filtered), msg.cacheErr)
-		return
+	if msg.tagErr != nil {
+		status = fmt.Sprintf("%s (tag warning: %v)", status, msg.tagErr)
 	}
-	m.statusMessage = fmt.Sprintf("Loaded %d videos", len(m.filtered))
+	m.baseStatus = status
+	m.statusMessage = status
 }
