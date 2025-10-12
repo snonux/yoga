@@ -1,8 +1,9 @@
 package app
 
-import tea "github.com/charmbracelet/bubbletea"
-
-import "yoga/internal/tags"
+import (
+	"codeberg.org/snonux/yoga/internal/tags"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 func saveTagsCmd(path string, entries []string) tea.Cmd {
 	// Copy slice to avoid accidental mutation after scheduling command.

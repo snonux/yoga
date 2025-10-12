@@ -15,7 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yoga/internal/tags"
+	"codeberg.org/snonux/yoga/internal/tags"
 )
 
 func loadVideosCmd(root, cachePath string, progress *loadProgress) tea.Cmd {
