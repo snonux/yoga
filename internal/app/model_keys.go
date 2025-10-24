@@ -94,6 +94,8 @@ func (m model) handleTableKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.showHelpBar()
 	case "r":
 		return m.resetFilterState()
+	case "i":
+		return m, func() tea.Msg { return reindexVideosMsg{} }
 	default:
 		return m.updateTable(msg)
 	}

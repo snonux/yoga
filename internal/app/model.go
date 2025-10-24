@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -168,6 +169,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleVideosLoaded(typed)
 	case playVideoMsg:
 		return m.handlePlayVideo(typed), nil
+	case reindexVideosMsg:
+		return m.handleReindexVideos(typed)
 	case tagsSavedMsg:
 		return m.handleTagsSaved(typed)
 	case tea.WindowSizeMsg:
@@ -193,7 +196,7 @@ func (m model) View() string {
 
 func (m model) renderBody() string {
 	helpLines := []string{
-		"↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  q quit",
+		"↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  i re-index  •  q quit",
 	}
 	info := statusStyle.Render(m.statusText())
 	progressLine := m.renderProgressLine()
@@ -325,6 +328,118 @@ func (m model) handlePlayVideo(msg playVideoMsg) model {
 	}
 	m.statusMessage = fmt.Sprintf("Playing via VLC: %s", trimPath(msg.path))
 	return m
+}
+
+func (m model) handleReindexVideos(msg reindexVideosMsg) (tea.Model, tea.Cmd) {
+	m.statusMessage = "Re-indexing videos..."
+	return m, loadVideosCmd(m.root, m.cachePath, m.progress)
+}
+
+func (m model) handleVideosLoaded(msg videosLoadedMsg) (tea.Model, tea.Cmd) {
+	m.loading = false
+	if msg.err != nil {
+		m.err = msg.err
+		m.statusMessage = fmt.Sprintf("error: %v", msg.err)
+	}
+
+	if len(m.videos) == 0 {
+		m.videos = msg.videos
+	} else {
+		existingVideos := make(map[string]int)
+		for i, v := range m.videos {
+			existingVideos[v.Path] = i
+		}
+
+		for _, newVideo := range msg.videos {
+			if i, ok := existingVideos[newVideo.Path]; ok {
+				m.videos[i] = newVideo
+			} else {
+				m.videos = append(m.videos, newVideo)
+			}
+		}
+	}
+
+	m.cache = msg.cache
+	m.pendingDurations = msg.pending
+	m.durationTotal = len(msg.pending)
+	m.durationDone = 0
+	m.applyFiltersAndSort()
+	m.updateStatusAfterLoad(msg)
+	m.durationInFlight = 0
+	if len(msg.pending) == 0 {
+		return m, nil
+	}
+	cmd := m.startDurationWorkers()
+	return m, cmd
+}
+
+func (m *model) updateStatusAfterLoad(msg videosLoadedMsg) {
+	if len(m.filtered) == 0 {
+		m.baseStatus = "No videos found"
+		m.statusMessage = m.baseStatus
+		return
+	}
+	status := ""
+	if len(msg.pending) > 0 {
+		status = fmt.Sprintf("Loaded %d videos, probing durations...", len(m.filtered))
+		if msg.cacheErr != nil {
+			status = fmt.Sprintf("Loaded %d videos (cache warning: %v), probing durations...", len(m.filtered), msg.cacheErr)
+		}
+	} else {
+		status = fmt.Sprintf("Loaded %d videos", len(m.filtered))
+		if msg.cacheErr != nil {
+			status = fmt.Sprintf("Loaded %d videos (cache warning: %v)", len(m.filtered), msg.cacheErr)
+		}
+	}
+	if msg.tagErr != nil {
+		status = fmt.Sprintf("%s (tag warning: %v)", status, msg.tagErr)
+	}
+	m.baseStatus = status
+	m.statusMessage = status
+}
+
+func (m *model) startDurationWorkers() tea.Cmd {
+	if len(m.pendingDurations) == 0 {
+		return nil
+	}
+	workers := runtime.NumCPU()
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 6 {
+		workers = 6
+	}
+	if workers > len(m.pendingDurations) {
+		workers = len(m.pendingDurations)
+	}
+	cmds := make([]tea.Cmd, 0, workers)
+	for i := 0; i < workers; i++ {
+		cmd := m.dequeueDurationCmd()
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *model) dequeueDurationCmd() tea.Cmd {
+	if len(m.pendingDurations) == 0 {
+		return nil
+	}
+	path := m.pendingDurations[0]
+	m.pendingDurations = m.pendingDurations[1:]
+	m.durationInFlight++
+	return probeDurationsCmd(path, m.cache)
+}
+
+func (m model) activeCrop() string {
+	if m.cropEnabled && m.cropValue != "" {
+		return m.cropValue
+	}
+	return ""
 }
 
 func (m model) handleProgressUpdate(msg progressUpdateMsg) (tea.Model, tea.Cmd) {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"yoga/internal/app"
+	"codeberg.org/snonux/yoga/internal/app"
 )
 
 func TestRunPrintsVersion(t *testing.T) {

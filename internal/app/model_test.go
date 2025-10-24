@@ -583,7 +583,7 @@ func TestToggleHelpKeys(t *testing.T) {
 	loaded := videosLoadedMsg{videos: []video{vid}, cache: newDurationCache(filepath.Join(root, "cache.json"))}
 	modelAny, _ := m.handleVideosLoaded(loaded)
 	m = modelAny.(model)
-	helpLine := "↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  q quit"
+	helpLine := "↑/↓ navigate  •  enter play  •  s sort  •  / filter  •  c crop  •  t edit tags  •  i re-index  •  q quit"
 	if view := m.View(); !strings.Contains(view, helpLine) {
 		t.Fatalf("expected help line visible: %s", view)
 	}

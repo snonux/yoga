@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -95,92 +94,5 @@ func (m *model) resetDurationState() {
 	m.durationInFlight = 0
 }
 
-func (m *model) dequeueDurationCmd() tea.Cmd {
-	if len(m.pendingDurations) == 0 {
-		return nil
-	}
-	path := m.pendingDurations[0]
-	m.pendingDurations = m.pendingDurations[1:]
-	m.durationInFlight++
-	return probeDurationsCmd(path, m.cache)
-}
 
-func (m *model) startDurationWorkers() tea.Cmd {
-	if len(m.pendingDurations) == 0 {
-		return nil
-	}
-	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > 6 {
-		workers = 6
-	}
-	if workers > len(m.pendingDurations) {
-		workers = len(m.pendingDurations)
-	}
-	cmds := make([]tea.Cmd, 0, workers)
-	for i := 0; i < workers; i++ {
-		cmd := m.dequeueDurationCmd()
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if len(cmds) == 0 {
-		return nil
-	}
-	return tea.Batch(cmds...)
-}
 
-func (m model) activeCrop() string {
-	if m.cropEnabled && m.cropValue != "" {
-		return m.cropValue
-	}
-	return ""
-}
-
-func (m model) handleVideosLoaded(msg videosLoadedMsg) (tea.Model, tea.Cmd) {
-	m.loading = false
-	if msg.err != nil {
-		m.err = msg.err
-		m.statusMessage = fmt.Sprintf("error: %v", msg.err)
-	}
-	m.videos = msg.videos
-	m.cache = msg.cache
-	m.pendingDurations = msg.pending
-	m.durationTotal = len(msg.pending)
-	m.durationDone = 0
-	m.applyFiltersAndSort()
-	m.updateStatusAfterLoad(msg)
-	m.durationInFlight = 0
-	if len(msg.pending) == 0 {
-		return m, nil
-	}
-	cmd := m.startDurationWorkers()
-	return m, cmd
-}
-
-func (m *model) updateStatusAfterLoad(msg videosLoadedMsg) {
-	if len(m.filtered) == 0 {
-		m.baseStatus = "No videos found"
-		m.statusMessage = m.baseStatus
-		return
-	}
-	status := ""
-	if len(msg.pending) > 0 {
-		status = fmt.Sprintf("Loaded %d videos, probing durations...", len(m.filtered))
-		if msg.cacheErr != nil {
-			status = fmt.Sprintf("Loaded %d videos (cache warning: %v), probing durations...", len(m.filtered), msg.cacheErr)
-		}
-	} else {
-		status = fmt.Sprintf("Loaded %d videos", len(m.filtered))
-		if msg.cacheErr != nil {
-			status = fmt.Sprintf("Loaded %d videos (cache warning: %v)", len(m.filtered), msg.cacheErr)
-		}
-	}
-	if msg.tagErr != nil {
-		status = fmt.Sprintf("%s (tag warning: %v)", status, msg.tagErr)
-	}
-	m.baseStatus = status
-	m.statusMessage = status
-}

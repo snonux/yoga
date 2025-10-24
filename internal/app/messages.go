@@ -33,3 +33,5 @@ type tagsSavedMsg struct {
 	tags []string
 	err  error
 }
+
+type reindexVideosMsg struct{}
