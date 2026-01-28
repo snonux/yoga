@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -716,4 +717,492 @@ func keyMsg(value string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value), Alt: false}
+}
+
+func TestSelectRandomVideoWithVideos(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	videos := []video{
+		{Name: "yoga1.mp4", Path: filepath.Join(root, "yoga1.mp4"), Duration: 10 * time.Minute},
+		{Name: "yoga2.mp4", Path: filepath.Join(root, "yoga2.mp4"), Duration: 20 * time.Minute},
+		{Name: "yoga3.mp4", Path: filepath.Join(root, "yoga3.mp4"), Duration: 30 * time.Minute},
+	}
+	m.loading = false
+	m.filtered = videos
+	m.table.SetRows([]table.Row{videoRow(videos[0]), videoRow(videos[1]), videoRow(videos[2])})
+
+	modelAny, cmd := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	if cmd != nil {
+		t.Fatalf("expected no command")
+	}
+	if !strings.Contains(m.statusMessage, "Randomly selected:") {
+		t.Fatalf("expected random selection message, got %s", m.statusMessage)
+	}
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(videos) {
+		t.Fatalf("expected cursor in valid range, got %d", cursor)
+	}
+	if !strings.Contains(m.statusMessage, videos[cursor].Name) {
+		t.Fatalf("expected selected video name in message")
+	}
+}
+
+func TestSelectRandomVideoWithNoVideos(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{}
+	modelAny, cmd := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	if cmd != nil {
+		t.Fatalf("expected no command")
+	}
+	if !strings.Contains(m.statusMessage, "No videos to select from") {
+		t.Fatalf("expected no videos message, got %s", m.statusMessage)
+	}
+}
+
+func TestSelectRandomVideoViaKeyHandler(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	videos := []video{
+		{Name: "clip1.mp4", Path: filepath.Join(root, "clip1.mp4")},
+		{Name: "clip2.mp4", Path: filepath.Join(root, "clip2.mp4")},
+	}
+	m.loading = false
+	m.filtered = videos
+	m.table.SetRows([]table.Row{videoRow(videos[0]), videoRow(videos[1])})
+
+	modelAny, _ := m.handleKeyMsg(keyMsg("x"))
+	m = modelAny.(model)
+
+	if !strings.Contains(m.statusMessage, "Randomly selected:") {
+		t.Fatalf("expected random selection via key handler")
+	}
+}
+
+func TestSelectRandomVideoMultipleTimes(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	videos := make([]video, 10)
+	rows := make([]table.Row, 10)
+	for i := 0; i < 10; i++ {
+		videos[i] = video{Name: fmt.Sprintf("video%d.mp4", i), Path: filepath.Join(root, fmt.Sprintf("video%d.mp4", i))}
+		rows[i] = videoRow(videos[i])
+	}
+	m.loading = false
+	m.filtered = videos
+	m.table.SetRows(rows)
+
+	selections := make(map[string]int)
+	for i := 0; i < 50; i++ {
+		modelAny, _ := m.selectRandomVideo()
+		m = modelAny.(model)
+		cursor := m.table.Cursor()
+		selections[videos[cursor].Name]++
+	}
+
+	if len(selections) < 5 {
+		t.Fatalf("expected randomness across multiple calls, only got %d unique selections", len(selections))
+	}
+}
+
+func TestSelectRandomVideoWithFilteredResults(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.videos = []video{
+		{Name: "morning flow.mp4", Path: filepath.Join(root, "morning.mp4"), Duration: 10 * time.Minute},
+		{Name: "evening flow.mp4", Path: filepath.Join(root, "evening.mp4"), Duration: 30 * time.Minute},
+		{Name: "power.mp4", Path: filepath.Join(root, "power.mp4"), Duration: 45 * time.Minute},
+	}
+
+	m.filters = filterState{name: "flow"}
+	m.applyFiltersAndSort()
+
+	if len(m.filtered) != 2 {
+		t.Fatalf("expected 2 filtered videos, got %d", len(m.filtered))
+	}
+
+	modelAny, _ := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	cursor := m.table.Cursor()
+	selected := m.filtered[cursor]
+	if !strings.Contains(selected.Name, "flow") {
+		t.Fatalf("expected selected video to match filter, got %s", selected.Name)
+	}
+}
+
+func TestSelectRandomVideoPluralityOfSelections(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	videos := make([]video, 3)
+	rows := make([]table.Row, 3)
+	for i := 0; i < 3; i++ {
+		videos[i] = video{Name: fmt.Sprintf("yoga%d.mp4", i), Path: filepath.Join(root, fmt.Sprintf("yoga%d.mp4", i))}
+		rows[i] = videoRow(videos[i])
+	}
+	m.filtered = videos
+	m.table.SetRows(rows)
+
+	first, _ := m.selectRandomVideo()
+	firstModel := first.(model)
+	firstCursor := firstModel.table.Cursor()
+
+	second, _ := firstModel.selectRandomVideo()
+	secondModel := second.(model)
+	secondCursor := secondModel.table.Cursor()
+
+	if firstCursor == secondCursor {
+		third, _ := secondModel.selectRandomVideo()
+		thirdModel := third.(model)
+		thirdCursor := thirdModel.table.Cursor()
+		if secondCursor == thirdCursor {
+			t.Fatalf("expected randomness shown by at least some different selections")
+		}
+	}
+}
+
+func TestHandleKeyMsgDispatchRandom(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{
+		{Name: "a.mp4", Path: "a.mp4"},
+		{Name: "b.mp4", Path: "b.mp4"},
+	}
+	m.table.SetRows([]table.Row{videoRow(m.filtered[0]), videoRow(m.filtered[1])})
+
+	modelAny, cmd := m.handleKeyMsg(keyMsg("x"))
+	m = modelAny.(model)
+
+	if cmd != nil {
+		t.Fatalf("expected no command for random selection")
+	}
+	if !strings.Contains(m.statusMessage, "Randomly selected") {
+		t.Fatalf("expected random selection triggered via dispatch")
+	}
+}
+
+func TestHandleKeyMsgDispatchUnknownKey(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{{Name: "a.mp4", Path: "a.mp4"}}
+	m.table.SetRows([]table.Row{videoRow(m.filtered[0])})
+
+	modelAny, _ := m.handleKeyMsg(keyMsg("Z"))
+	_ = modelAny.(model)
+}
+
+func TestHandleKeyMsgTableKeyWhileLoading(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = true
+
+	modelAny, cmd := m.handleKeyMsg(keyMsg("x"))
+	m = modelAny.(model)
+
+	if cmd != nil {
+		t.Fatalf("expected no command while loading")
+	}
+	if !strings.Contains(m.statusMessage, "Scanning") {
+		t.Fatalf("should ignore key input while loading")
+	}
+}
+
+func TestHandleReindexVideosCmd(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{{Name: "test.mp4", Path: filepath.Join(root, "test.mp4")}}
+
+	modelAny, cmd := m.handleReindexVideos(reindexVideosMsg{})
+	m = modelAny.(model)
+
+	if cmd == nil {
+		t.Fatalf("expected command for re-index")
+	}
+	if !strings.Contains(m.statusMessage, "Re-indexing") {
+		t.Fatalf("expected re-indexing status, got %s", m.statusMessage)
+	}
+}
+
+func TestRenderModalRendering(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.editingTags = true
+	m.filtered = []video{{Name: "test.mp4", Path: "test.mp4", Tags: []string{"calm"}}}
+
+	view := m.View()
+	if !strings.Contains(view, "Tags:") {
+		t.Fatalf("expected tag input in view")
+	}
+}
+
+func TestSelectRandomVideoSingleItem(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{{Name: "only.mp4", Path: filepath.Join(root, "only.mp4")}}
+	m.table.SetRows([]table.Row{videoRow(m.filtered[0])})
+
+	modelAny, _ := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	if m.table.Cursor() != 0 {
+		t.Fatalf("expected cursor at 0 for single item")
+	}
+	if !strings.Contains(m.statusMessage, "only.mp4") {
+		t.Fatalf("expected status with video name")
+	}
+}
+
+func TestHandleTableKeyAllShortcuts(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{{Name: "a.mp4", Path: filepath.Join(root, "a.mp4"), Duration: 10 * time.Minute}}
+	m.table.SetRows([]table.Row{videoRow(m.filtered[0])})
+
+	tests := []struct {
+		key string
+		fn  func(model) model
+	}{
+		{"n", func(m model) model { modelAny, _ := m.handleKeyMsg(keyMsg("n")); return modelAny.(model) }},
+		{"l", func(m model) model { modelAny, _ := m.handleKeyMsg(keyMsg("l")); return modelAny.(model) }},
+		{"a", func(m model) model { modelAny, _ := m.handleKeyMsg(keyMsg("a")); return modelAny.(model) }},
+		{"r", func(m model) model { modelAny, _ := m.handleKeyMsg(keyMsg("r")); return modelAny.(model) }},
+	}
+
+	for _, test := range tests {
+		result := test.fn(m)
+		if result.statusMessage == "" {
+			t.Fatalf("expected status for key %s", test.key)
+		}
+	}
+}
+
+func TestUpdateWithPlayVideoMsg(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+
+	modelAny, _ := m.Update(playVideoMsg{path: "video.mp4"})
+	m = modelAny.(model)
+
+	if !strings.Contains(m.statusMessage, "Playing") {
+		t.Fatalf("expected playing status")
+	}
+}
+
+func TestUpdateWithWindowSizeMsg(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+
+	modelAny, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = modelAny.(model)
+
+	if m.viewportWidth != 100 {
+		t.Fatalf("expected viewport width updated")
+	}
+}
+
+func TestUpdateWithTagsSavedMsg(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	videoPath := filepath.Join(root, "test.mp4")
+	m.videos = []video{{Name: "test.mp4", Path: videoPath}}
+	m.filtered = m.videos
+
+	modelAny, _ := m.Update(tagsSavedMsg{path: videoPath, tags: []string{"new"}, err: nil})
+	m = modelAny.(model)
+
+	if !strings.Contains(m.statusMessage, "Tags updated") {
+		t.Fatalf("expected tags updated message")
+	}
+}
+
+func TestUpdateKeyMsgRouting(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = []video{{Name: "a.mp4", Path: "a.mp4"}}
+	m.table.SetRows([]table.Row{videoRow(m.filtered[0])})
+
+	modelAny, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = modelAny.(model)
+
+	if !strings.Contains(m.statusMessage, "Randomly selected") {
+		t.Fatalf("expected key message routed to handler")
+	}
+}
+
+func TestSelectRandomVideoIntegrationWithFilter(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.videos = []video{
+		{Name: "morning1.mp4", Path: filepath.Join(root, "morning1.mp4"), Duration: 15 * time.Minute},
+		{Name: "morning2.mp4", Path: filepath.Join(root, "morning2.mp4"), Duration: 25 * time.Minute},
+		{Name: "evening1.mp4", Path: filepath.Join(root, "evening1.mp4"), Duration: 45 * time.Minute},
+	}
+
+	m.filters = filterState{minEnabled: true, minMinutes: 20}
+	m.applyFiltersAndSort()
+
+	if len(m.filtered) != 2 {
+		t.Fatalf("expected 2 filtered videos")
+	}
+
+	modelAny, _ := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	selected := m.filtered[m.table.Cursor()]
+	if selected.Duration < 20*time.Minute {
+		t.Fatalf("expected selected video to respect filter")
+	}
+}
+
+func TestDurationCacheRecord(t *testing.T) {
+	tmpDir := t.TempDir()
+	videoPath := filepath.Join(tmpDir, "video.mp4")
+	if err := os.WriteFile(videoPath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cacheFile := filepath.Join(tmpDir, "cache.json")
+	cache := newDurationCache(cacheFile)
+
+	info, err := os.Stat(videoPath)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	if err := cache.Record(videoPath, info, 5*time.Minute); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	result, ok := cache.Lookup(videoPath, info)
+	if !ok || result != 5*time.Minute {
+		t.Fatalf("expected duration to be recorded and retrieved")
+	}
+}
+
+func TestApplyFilterInputsCoverage(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.inputs.fields[0].SetValue("test")
+	m.inputs.fields[1].SetValue("5")
+	m.inputs.fields[2].SetValue("10")
+	m.inputs.fields[3].SetValue("tag")
+
+	if err := m.applyFilterInputs(); err != nil {
+		t.Fatalf("applyFilterInputs: %v", err)
+	}
+	if m.filters.name != "test" || m.filters.minMinutes != 5 || m.filters.maxMinutes != 10 || m.filters.tags != "tag" {
+		t.Fatalf("expected all filter fields populated")
+	}
+}
+
+func TestHideHelpBar(t *testing.T) {
+	m, err := newModel(Options{Root: t.TempDir()})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	if !m.showHelp {
+		t.Fatalf("expected help to start shown")
+	}
+
+	modelAny, _ := m.hideHelpBar()
+	m = modelAny.(model)
+
+	if m.showHelp {
+		t.Fatalf("expected help to be hidden")
+	}
+}
+
+func TestCanSelectRandomWhenCached(t *testing.T) {
+	root := t.TempDir()
+	m, err := newModel(Options{Root: root})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	m.loading = false
+	m.filtered = make([]video, 20)
+	for i := 0; i < 20; i++ {
+		m.filtered[i] = video{Name: fmt.Sprintf("v%d.mp4", i), Path: fmt.Sprintf("path%d", i)}
+	}
+
+	rows := make([]table.Row, 20)
+	for i := 0; i < 20; i++ {
+		rows[i] = videoRow(m.filtered[i])
+	}
+	m.table.SetRows(rows)
+
+	m.table.SetCursor(0)
+	modelAny, _ := m.selectRandomVideo()
+	m = modelAny.(model)
+
+	if m.table.Cursor() == 0 {
+		t.Fatalf("expected cursor to move to random position")
+	}
 }

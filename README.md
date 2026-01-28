@@ -1,6 +1,6 @@
 # Yoga
 
-Yoga is a TUI for browsing local yoga videos with quick filtering, duration probing, and one-key playback via VLC. It has ben vibe-coded.
+Yoga is a TUI for browsing local yoga videos with quick filtering, duration probing, and one-key playback via VLC. It has been vibe coded.
 
 ![Yoga](yoga.png)
 
@@ -26,6 +26,7 @@ Yoga recognises common video extensions (`.mp4`, `.mkv`, `.mov`, `.avi`, `.wmv`,
 - `n`, `l`, `a` – Sort by name, length, or age
 - `c` – Toggle VLC crop
 - `t` – Edit tags for the selected video
+- `x` – Select a random video from filtered results
 - `H` / `h` – Hide or re-show the help footer
 - `q` – Quit
 

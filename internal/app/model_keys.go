@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math/rand"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -96,6 +97,8 @@ func (m model) handleTableKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.resetFilterState()
 	case "i":
 		return m, func() tea.Msg { return reindexVideosMsg{} }
+	case "x":
+		return m.selectRandomVideo()
 	default:
 		return m.updateTable(msg)
 	}
@@ -145,5 +148,17 @@ func (m model) resetFilterState() (tea.Model, tea.Cmd) {
 	m.resetFilters()
 	m.applyFiltersAndSort()
 	m.statusMessage = fmt.Sprintf("Filters cleared (%d videos)", len(m.filtered))
+	return m, nil
+}
+
+func (m model) selectRandomVideo() (tea.Model, tea.Cmd) {
+	if len(m.filtered) == 0 {
+		m.statusMessage = "No videos to select from"
+		return m, nil
+	}
+	idx := rand.Intn(len(m.filtered))
+	m.table.SetCursor(idx)
+	video := m.filtered[idx]
+	m.statusMessage = fmt.Sprintf("Randomly selected: %s", video.Name)
 	return m, nil
 }
