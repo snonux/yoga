@@ -109,3 +109,7 @@
 **Phase 2.1-2.2:** Thumbnail system - Implemented thumbnail generator, cache, and tests.
 
 **Phase 2.3 (partial):** Integration - Created loader_gui.go for GUI video loading with thumbnail support.
+
+**Phase 3:** GUI main window - Implemented app.go, main_window.go, status_bar.go, video_list.go, preview_panel.go. Created basic GUI application entry point with --gui flag. Fixed VLC mocking in tests.
+
+**Phase 3:** Completed GUI main window and all core components.
