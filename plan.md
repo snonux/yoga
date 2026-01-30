@@ -116,4 +116,6 @@
 
 **Phase 6:** Integration & polish - Window state persistence (save/load size and split position), comprehensive keyboard shortcuts, dependency checks on startup, error dialogs for missing dependencies.
 
-**Phase 7 (in progress):** Testing & documentation.
+**Phase 7:** Testing & Documentation - Updated README.md with GUI mode documentation and keyboard shortcuts. All tests pass.
+
+**MIGRATION COMPLETE!** GUI application fully functional with all TUI features plus thumbnail support.
