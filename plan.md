@@ -104,18 +104,33 @@
 
 ## Completed Milestones
 
-**Phase 1.1-1.3:** Foundation and architecture - Added Fyne dependency, created package structure, extended video struct with thumbnail fields.
+**Phase 1-2:** Foundation, architecture, and thumbnail system - Added Fyne dependency, created package structure, extended video struct with thumbnail fields, implemented thumbnail generator and cache.
 
-**Phase 2.1-2.2:** Thumbnail system - Implemented thumbnail generator, cache, and tests.
+**Phase 3:** GUI main window - Implemented app.go, main_window.go, status_bar.go, video_list.go, preview_panel.go. Created basic GUI application entry point.
 
-**Phase 2.3:** Integration - Created loader_gui.go for GUI video loading with thumbnail support.
+**Phase 4-5:** Background operations - Implemented AsyncManager for proper background goroutine handling, async video loading with progress updates, async thumbnail generation, UI callbacks for main thread updates.
 
-**Phase 3:** GUI main window - Implemented app.go, main_window.go, status_bar.go, video_list.go, preview_panel.go. Created basic GUI application entry point with --gui flag. Fixed VLC mocking in tests.
+**Phase 6:** Integration & polish - Window state persistence, comprehensive keyboard shortcuts, dependency checks, error dialogs.
 
-**Phase 5:** Background operations - Implemented AsyncManager for proper background goroutine handling, async video loading with progress updates, async thumbnail generation, UI callbacks for main thread updates.
+**Phase 7:** Testing & Documentation - Updated README.md with GUI-only mode documentation.
 
-**Phase 6:** Integration & polish - Window state persistence (save/load size and split position), comprehensive keyboard shortcuts, dependency checks on startup, error dialogs for missing dependencies.
+**Complete:** Yoga is now a GUI-only application with all TUI features plus thumbnail support. TUI code (internal/app/{model.go,style.go,messages.go,etc}) is deprecated and can be removed in a follow-up cleanup commit.
 
-**Phase 7:** Testing & Documentation - Updated README.md with GUI mode documentation and keyboard shortcuts. All tests pass.
+## Post-Migration Cleanup (optional)
 
-**MIGRATION COMPLETE!** GUI application fully functional with all TUI features plus thumbnail support.
+The following TUI-specific files can be removed:
+- internal/app/app.go - Bubble Tea program wrapper
+- internal/app/model.go - TUI model state management
+- internal/app/style.go - Terminal styling
+- internal/app/messages.go - Bubble Tea messages
+- internal/app/view_helpers.go - TUI rendering helpers
+- internal/app/model_keys.go - TUI key handlers
+- internal/app/model_durations.go - Duration UI updates (adapted to GUI)
+- internal/app/model_tags.go - Tag editing UI (adapted to GUI)
+- internal/app/model_sort.go - Sorting (logic reused)
+- internal/app/filters.go - Filtering (logic reused)
+
+The following TUI dependencies can be removed from go.mod:
+- github.com/charmbracelet/bubbletea
+- github.com/charmbracelet/bubbles
+- github.com/charmbracelet/lipgloss
