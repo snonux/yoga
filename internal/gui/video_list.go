@@ -139,6 +139,23 @@ func (vl *VideoList) Selected() *yogaApp.Video {
 	return nil
 }
 
+func (vl *VideoList) SelectRandom() {
+	if len(vl.filtered) == 0 {
+		return
+	}
+	idx := 0
+	for _, v := range vl.filtered {
+		if v != nil {
+			idx++
+		}
+	}
+	if idx == 0 {
+		return
+	}
+	randomIdx := idx % len(vl.filtered)
+	vl.list.Select(randomIdx)
+}
+
 func (vl *VideoList) Refresh() {
 	vl.list.Refresh()
 }

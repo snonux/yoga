@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -26,6 +27,7 @@ type MainWindow struct {
 	filterDialog *dialog.FormDialog
 	tagDialog    *dialog.FormDialog
 	cropEnabled  bool
+	asyncManager *AsyncManager
 }
 
 func NewMainWindow(app *App, root, cropValue string) *MainWindow {
@@ -40,13 +42,17 @@ func NewMainWindow(app *App, root, cropValue string) *MainWindow {
 	mw.status = NewStatusBar()
 	mw.videoList = NewVideoList()
 	mw.previewPanel = NewPreviewPanel()
+	mw.asyncManager = NewAsyncManager(app, window)
 	mw.setupCallbacks()
 	mw.buildContent()
 	mw.setupKeyboardShortcuts()
 	mw.buildToolbar()
 
+	mw.loadWindowState()
+
 	window.Resize(fyne.NewSize(1200, 800))
 	window.SetCloseIntercept(func() {
+		mw.saveWindowState()
 		app.Stop()
 		window.Close()
 	})
@@ -124,13 +130,49 @@ func (m *MainWindow) setupKeyboardShortcuts() {
 			m.quit()
 		case fyne.KeyEnter:
 			m.videoList.PlaySelected()
+		case fyne.KeyF, fyne.KeySlash:
+			m.showFilterDialog()
+		case fyne.KeyT:
+			video := m.videoList.Selected()
+			if video != nil {
+				m.showTagDialog(video)
+			}
+		case fyne.KeyN:
+			m.sortVideos("Sort by Name")
+		case fyne.KeyL:
+			m.sortVideos("Sort by Duration")
+		case fyne.KeyA:
+			m.sortVideos("Sort by Age")
+		case fyne.KeyR:
+			m.selectRandom()
+		case fyne.KeyI:
+			m.reindex()
+		case fyne.KeyC:
+			m.toggleCrop()
+		case fyne.KeyDelete:
+			m.resetFilters()
+		case fyne.KeyH:
+			m.refresh()
 		}
 	})
 }
 
 func (m *MainWindow) Show() {
+	m.checkDependencies()
 	m.window.Show()
 	m.loadVideosAsync()
+}
+
+func (m *MainWindow) checkDependencies() {
+	if _, err := exec.LookPath("vlc"); err != nil {
+		dialog.ShowInformation("Missing Dependency", "VLC is not installed or not in PATH. Video playback will not work.", m.window)
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		dialog.ShowInformation("Missing Dependency", "ffmpeg is not installed or not in PATH. Thumbnail generation will not work.", m.window)
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		dialog.ShowInformation("Missing Dependency", "ffprobe is not installed or not in PATH. Duration detection may not work.", m.window)
+	}
 }
 
 func (m *MainWindow) SetStatus(text string) {
@@ -265,7 +307,15 @@ func (m *MainWindow) saveTags(video *yogaApp.Video, tagsStr string) {
 }
 
 func (m *MainWindow) selectRandom() {
-	m.SetStatus("Random selection")
+	if len(m.videos) == 0 {
+		m.SetStatus("No videos to select from")
+		return
+	}
+	m.videoList.SelectRandom()
+	selected := m.videoList.Selected()
+	if selected != nil {
+		m.SetStatus(fmt.Sprintf("Randomly selected: %s", selected.Name))
+	}
 }
 
 func (m *MainWindow) reindex() {
@@ -284,19 +334,86 @@ func (m *MainWindow) quit() {
 }
 
 func (m *MainWindow) loadVideosAsync() {
+	m.status.ShowProgress()
+	m.status.SetProgress(0)
 	m.SetStatus("Loading videos...")
-	go func() {
-		videos, _, _, err := m.app.Loader().LoadVideos(m.app.Context())
+
+	m.asyncManager.RunAsync(func() UpdateCallback {
+		videos, pendingDuration, pendingThumbnail, err := m.app.Loader().LoadVideos(m.app.Context())
 		if err != nil {
-			dialog.ShowError(err, m.window)
-			return
+			return func() {
+				dialog.ShowError(err, m.window)
+				m.status.HideProgress()
+				m.SetStatus("Error loading videos")
+			}
 		}
+
+		m.generatePendingThumbnailsAsync(pendingThumbnail, videos)
+
 		videoPtrs := make([]*yogaApp.Video, len(videos))
 		for i := range videos {
 			videoPtrs[i] = &videos[i]
 		}
-		m.UpdateVideos(videoPtrs)
-	}()
+
+		return func() {
+			m.UpdateVideos(videoPtrs)
+			m.status.HideProgress()
+			status := fmt.Sprintf("Loaded %d videos", len(videos))
+			if len(pendingDuration) > 0 {
+				status += fmt.Sprintf(", %d duration pending", len(pendingDuration))
+			}
+			if len(pendingThumbnail) > 0 {
+				status += fmt.Sprintf(", %d thumbnails pending", len(pendingThumbnail))
+			}
+			m.SetStatus(status)
+		}
+	})
+}
+
+func (m *MainWindow) generatePendingThumbnailsAsync(pendingPaths []string, videos []yogaApp.Video) {
+	if len(pendingPaths) == 0 {
+		return
+	}
+
+	videoMap := make(map[string]*yogaApp.Video)
+	for i := range videos {
+		videoMap[videos[i].Path] = &videos[i]
+	}
+
+	for i, path := range pendingPaths {
+		path := path
+		idx := i
+		m.asyncManager.RunAsync(func() UpdateCallback {
+			video := videoMap[path]
+			if video == nil {
+				return nil
+			}
+
+			info, err := os.Stat(path)
+			if err != nil {
+				return func() {
+					fmt.Printf("Error getting file info for %s: %v\n", path, err)
+				}
+			}
+
+			_, err = m.app.Loader().GenerateThumbnail(m.app.Context(), path, info)
+			if err != nil {
+				return func() {
+					fmt.Printf("Thumbnail generation error for %s: %v\n", path, err)
+				}
+			}
+
+			return func() {
+				progress := float64(idx+1) / float64(len(pendingPaths))
+				m.status.SetProgress(progress)
+				video.ThumbnailGenerated = true
+				m.videoList.Refresh()
+				if m.videoList.Selected() == video {
+					m.previewPanel.SetVideo(video)
+				}
+			}
+		})
+	}
 }
 
 func contains(s, substr string) bool {
@@ -333,4 +450,22 @@ func parseTags(s string) []string {
 		}
 	}
 	return tags
+}
+
+func (m *MainWindow) toggleCrop() {
+	if m.app.cropValue == "" {
+		dialog.ShowInformation("Crop", "No crop value set (start with --crop)", m.window)
+		return
+	}
+	m.cropEnabled = !m.cropEnabled
+	if m.cropEnabled {
+		m.SetStatus(fmt.Sprintf("Crop enabled (%s)", m.app.cropValue))
+	} else {
+		m.SetStatus("Crop disabled")
+	}
+}
+
+func (m *MainWindow) resetFilters() {
+	m.videoList.Filter(nil)
+	m.SetStatus(fmt.Sprintf("Filters cleared (%d videos)", len(m.videos)))
 }
