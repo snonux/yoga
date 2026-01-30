@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -136,11 +137,23 @@ func TestProbeDurationSuccess(t *testing.T) {
 }
 
 func TestPlayVideoCmdMissingBinary(t *testing.T) {
+	originalCommand := vlcCommand
+	defer func() { vlcCommand = originalCommand }()
+
+	vlcCommand = func(name string, args ...string) *exec.Cmd {
+		return &exec.Cmd{
+			Err: &exec.Error{Name: name, Err: exec.ErrNotFound},
+		}
+	}
+
 	cmd := playVideoCmd("/no/such/file.mp4", "")
 	msg := cmd()
 	result := msg.(playVideoMsg)
 	if result.path != "/no/such/file.mp4" {
 		t.Fatalf("unexpected path %s", result.path)
+	}
+	if result.err == nil {
+		t.Fatalf("expected error for missing VLC binary")
 	}
 }
 

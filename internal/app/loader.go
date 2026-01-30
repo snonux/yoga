@@ -225,10 +225,12 @@ func probeDuration(path string) (time.Duration, error) {
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 
+var vlcCommand = exec.Command
+
 func playVideoCmd(path, crop string) tea.Cmd {
 	return func() tea.Msg {
 		args := buildVLCArgs(path, crop)
-		cmd := exec.Command("vlc", args...)
+		cmd := vlcCommand("vlc", args...)
 		if err := cmd.Start(); err != nil {
 			return playVideoMsg{path: path, err: err}
 		}
