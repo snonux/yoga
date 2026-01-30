@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"codeberg.org/snonux/yoga/internal/app"
 	"codeberg.org/snonux/yoga/internal/fsutil"
+	"codeberg.org/snonux/yoga/internal/gui"
 	"codeberg.org/snonux/yoga/internal/meta"
 )
 
@@ -28,6 +28,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	rootFlag := fs.String("root", "", "Directory containing yoga videos (default ~/Yoga)")
 	cropFlag := fs.String("crop", "", "Optional crop aspect for VLC (e.g. 5:4)")
+	guiFlag := fs.Bool("gui", true, "Run in GUI mode (default true)")
 	versionFlag := fs.Bool("version", false, "Print version and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -41,7 +42,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%v\n", err)
 		return 1
 	}
-	opts := app.Options{Root: root, Crop: strings.TrimSpace(*cropFlag)}
+	if *guiFlag {
+		g := gui.NewApp(root, *cropFlag)
+		g.Run()
+		return 0
+	}
+	opts := app.Options{Root: root, Crop: *cropFlag}
 	if err := runApp(opts); err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1

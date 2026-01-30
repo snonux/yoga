@@ -25,7 +25,7 @@ func loadVideosCmd(root, cachePath string, progress *loadProgress) tea.Cmd {
 		if progress != nil {
 			progress.MarkDone()
 		}
-		return videosLoadedMsg{videos: videos, err: err, cacheErr: cacheErr, pending: pending, cache: cache, tagErr: tagErr}
+		return VideosLoadedMsg{videos: videos, err: err, cacheErr: cacheErr, pending: pending, cache: cache, tagErr: tagErr}
 	}
 }
 
@@ -39,7 +39,7 @@ func progressTickerCmd(progress *loadProgress) tea.Cmd {
 	})
 }
 
-func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]video, []string, error, error) {
+func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]Video, []string, error, error) {
 	paths, err := collectVideoPaths(root)
 	if err != nil {
 		return nil, nil, nil, err
@@ -47,13 +47,13 @@ func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]vi
 	if progress != nil {
 		progress.SetTotal(len(paths))
 	}
-	videos := make([]video, 0, len(paths))
+	videos := make([]Video, 0, len(paths))
 	pending := make([]string, 0)
 	var tagErrors []string
 	for _, path := range paths {
 		info, statErr := os.Stat(path)
 		if statErr != nil {
-			videos = append(videos, video{Name: filepath.Base(path), Path: path, Err: statErr})
+			videos = append(videos, Video{Name: filepath.Base(path), Path: path, Err: statErr})
 			increment(progress)
 			continue
 		}
@@ -65,7 +65,7 @@ func loadVideos(root string, cache *durationCache, progress *loadProgress) ([]vi
 		if tagErr != nil {
 			tagErrors = append(tagErrors, fmt.Sprintf("%s: %v", filepath.Base(path), tagErr))
 		}
-		videos = append(videos, video{
+		videos = append(videos, Video{
 			Name:     filepath.Base(path),
 			Path:     path,
 			Duration: dur,

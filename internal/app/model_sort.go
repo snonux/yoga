@@ -17,7 +17,7 @@ func (m *model) toggleSort(target sortField) {
 }
 
 func (m *model) applyFiltersAndSort() {
-	filtered := make([]video, 0, len(m.videos))
+	filtered := make([]Video, 0, len(m.videos))
 	for _, v := range m.videos {
 		if m.passesFilters(v) {
 			filtered = append(filtered, v)
@@ -30,7 +30,7 @@ func (m *model) applyFiltersAndSort() {
 	m.updateTableRows()
 }
 
-func (m *model) less(a, b video) bool {
+func (m *model) less(a, b Video) bool {
 	var less bool
 	switch m.sortField {
 	case sortByName:

@@ -115,7 +115,7 @@ func (m model) describeFilters() string {
 	return strings.Join(parts, ", ")
 }
 
-func (m *model) passesFilters(v video) bool {
+func (m *model) passesFilters(v Video) bool {
 	if m.filters.name != "" && !strings.Contains(strings.ToLower(v.Name), strings.ToLower(m.filters.name)) {
 		return false
 	}

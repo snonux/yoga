@@ -32,8 +32,8 @@ const (
 
 type model struct {
 	table            table.Model
-	videos           []video
-	filtered         []video
+	videos           []Video
+	filtered         []Video
 	filters          filterState
 	inputs           filterInputs
 	showFilters      bool
@@ -165,7 +165,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleProgressUpdate(typed)
 	case durationUpdateMsg:
 		return m.handleDurationUpdate(typed)
-	case videosLoadedMsg:
+	case VideosLoadedMsg:
 		return m.handleVideosLoaded(typed)
 	case playVideoMsg:
 		return m.handlePlayVideo(typed), nil
@@ -335,7 +335,7 @@ func (m model) handleReindexVideos(msg reindexVideosMsg) (tea.Model, tea.Cmd) {
 	return m, loadVideosCmd(m.root, m.cachePath, m.progress)
 }
 
-func (m model) handleVideosLoaded(msg videosLoadedMsg) (tea.Model, tea.Cmd) {
+func (m model) handleVideosLoaded(msg VideosLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != nil {
 		m.err = msg.err
@@ -373,7 +373,7 @@ func (m model) handleVideosLoaded(msg videosLoadedMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *model) updateStatusAfterLoad(msg videosLoadedMsg) {
+func (m *model) updateStatusAfterLoad(msg VideosLoadedMsg) {
 	if len(m.filtered) == 0 {
 		m.baseStatus = "No videos found"
 		m.statusMessage = m.baseStatus

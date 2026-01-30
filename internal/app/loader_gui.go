@@ -28,13 +28,13 @@ func NewLoader(root string, durationCachePath string) *Loader {
 	}
 }
 
-func (l *Loader) LoadVideos(ctx context.Context) ([]video, []string, []string, error) {
+func (l *Loader) LoadVideos(ctx context.Context) ([]Video, []string, []string, error) {
 	paths, err := collectVideoPathsForLoader(ctx, l.root)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	videos := make([]video, 0, len(paths))
+	videos := make([]Video, 0, len(paths))
 	durationPending := make([]string, 0)
 	thumbnailPending := make([]string, 0)
 	var tagErrors []string
@@ -42,7 +42,7 @@ func (l *Loader) LoadVideos(ctx context.Context) ([]video, []string, []string, e
 	for _, path := range paths {
 		info, statErr := os.Stat(path)
 		if statErr != nil {
-			videos = append(videos, video{
+			videos = append(videos, Video{
 				Name: filepath.Base(path),
 				Path: path,
 				Err:  statErr,
@@ -66,7 +66,7 @@ func (l *Loader) LoadVideos(ctx context.Context) ([]video, []string, []string, e
 			tagErrors = append(tagErrors, fmt.Sprintf("%s: %v", filepath.Base(path), tagErr))
 		}
 
-		videos = append(videos, video{
+		videos = append(videos, Video{
 			Name:               filepath.Base(path),
 			Path:               path,
 			Duration:           dur,

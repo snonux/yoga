@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 )
 
-func videoRow(v video) table.Row {
+func videoRow(v Video) table.Row {
 	duration := "(unknown)"
 	if v.Duration > 0 {
 		duration = formatDuration(v.Duration)

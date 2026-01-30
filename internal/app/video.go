@@ -2,7 +2,7 @@ package app
 
 import "time"
 
-type video struct {
+type Video struct {
 	Name               string
 	Path               string
 	Duration           time.Duration

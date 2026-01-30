@@ -50,8 +50,8 @@ func (m *model) restoreSelection(path string) {
 	if path == "" {
 		return
 	}
-	for i, video := range m.filtered {
-		if video.Path == path {
+	for i, Video := range m.filtered {
+		if Video.Path == path {
 			m.table.SetCursor(i)
 			return
 		}

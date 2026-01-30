@@ -2,8 +2,8 @@ package app
 
 import "time"
 
-type videosLoadedMsg struct {
-	videos   []video
+type VideosLoadedMsg struct {
+	videos   []Video
 	err      error
 	cacheErr error
 	pending  []string

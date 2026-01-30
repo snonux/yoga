@@ -19,14 +19,14 @@ func (m model) openTagEditor() (tea.Model, tea.Cmd) {
 		m.statusMessage = "No selection"
 		return m, nil
 	}
-	video := m.filtered[cursor]
+	Video := m.filtered[cursor]
 	m.editingTags = true
-	m.tagEditPath = video.Path
+	m.tagEditPath = Video.Path
 	m.tagInput = cloneInput(m.tagInput)
-	m.tagInput.SetValue(strings.Join(video.Tags, ", "))
+	m.tagInput.SetValue(strings.Join(Video.Tags, ", "))
 	m.tagInput.CursorEnd()
 	m.tagInput.Focus()
-	m.statusMessage = fmt.Sprintf("Editing tags for %s", video.Name)
+	m.statusMessage = fmt.Sprintf("Editing tags for %s", Video.Name)
 	return m, nil
 }
 
@@ -50,7 +50,7 @@ func (m model) commitTags() (tea.Model, tea.Cmd) {
 	if m.tagEditPath == "" {
 		m.editingTags = false
 		m.tagInput.Blur()
-		m.statusMessage = "No video selected"
+		m.statusMessage = "No Video selected"
 		return m, nil
 	}
 	value := m.tagInput.Value()
