@@ -1,5 +1,7 @@
 # Yoga
 
+> **⚠️ DEPRECATED:** This project is no longer maintained. No further updates, bug fixes, or feature additions will be made. Use at your own risk.
+
 Yoga is a TUI for browsing local yoga videos with quick filtering, duration probing, and one-key playback via VLC. It has been vibe coded.
 
 ![Yoga](yoga.png)
