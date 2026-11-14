@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/snonux/yoga/internal/tags"
+	"github.com/snonux/yoga/internal/tags"
 )
 
 func TestCollectVideoPathsDetectsMP4(t *testing.T) {

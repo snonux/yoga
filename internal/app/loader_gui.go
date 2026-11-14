@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"codeberg.org/snonux/yoga/internal/tags"
-	"codeberg.org/snonux/yoga/internal/thumbnail"
+	"github.com/snonux/yoga/internal/tags"
+	"github.com/snonux/yoga/internal/thumbnail"
 )
 
 type Loader struct {

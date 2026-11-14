@@ -1,8 +1,8 @@
 package app
 
 import (
-	"codeberg.org/snonux/yoga/internal/tags"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/snonux/yoga/internal/tags"
 )
 
 func saveTagsCmd(path string, entries []string) tea.Cmd {

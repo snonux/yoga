@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"codeberg.org/snonux/yoga/internal/app"
-	"codeberg.org/snonux/yoga/internal/fsutil"
-	"codeberg.org/snonux/yoga/internal/meta"
+	"github.com/snonux/yoga/internal/app"
+	"github.com/snonux/yoga/internal/fsutil"
+	"github.com/snonux/yoga/internal/meta"
 )
 
 const defaultRoot = "~/Yoga"

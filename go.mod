@@ -1,4 +1,4 @@
-module codeberg.org/snonux/yoga
+module github.com/snonux/yoga
 
 go 1.24.7
 
